@@ -1,0 +1,416 @@
+#include <LiquidCrystal.h>
+#include<Wire.h>
+// Define the arrays for scrolling text
+char array1[] = "                Select a temperature";
+char array2[] = "                Insert a drink";
+int tim = 250;  // Delay time for scrolling
+
+
+// Initialize the LCD with the appropriate pins
+LiquidCrystal lcd(4, 6, 10, 11, 12, 13);
+float duration, distance;
+// Define button pins
+const int UpButton = 7;
+const int DownButton = 8;
+const int SelectButton = 2;
+const int Buzzer = 5;
+//const int Echo = A2;
+const int trig = 9;
+
+
+int ThermistorPin = 0;
+int Vo;
+float R1 = 10000;
+float logR2, R2, T, Tc, Tf;
+float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;
+// Variables for button states and mode
+int UpButtonState = 0;
+int DownButtonState = 0;
+int SelectButtonState = 0;
+
+
+int Mode = 1;
+int lower = 13;
+// Variables for input timeout
+unsigned long lastInputTime = 0;
+const unsigned long inputTimeout = 20000;  // 20 seconds
+
+
+// Counter variable
+int counter = 70;
+
+
+// Variables for non-blocking scrolling
+unsigned long previousScrollTime = 0;
+int scrollPosition1 = 0;
+int scrollPosition2 = 0;
+bool displayArray1 = true;
+
+
+double diff = 0;
+double diff1 = 0;
+int i;
+int j;
+int beat = 0;
+int bear = 0;
+
+
+void setup() {
+  lcd.begin(16, 2);  // Initialize the LCD (16 columns, 2 rows)
+  Serial.begin(9600);
+  // Set button pins as inputs
+  pinMode(UpButton, INPUT);
+  pinMode(DownButton, INPUT);
+  pinMode(SelectButton, INPUT);
+  pinMode(Buzzer, OUTPUT);
+  pinMode(trig, OUTPUT);
+  pinMode(A1, INPUT);
+  pinMode(3,OUTPUT);
+  Wire.begin();
+  lastInputTime = millis();  // Initialize the timer
+}
+
+
+void loop() {
+  // Read button states
+  UpButtonState = digitalRead(UpButton);
+  DownButtonState = digitalRead(DownButton);
+  SelectButtonState = digitalRead(SelectButton);
+
+
+
+
+
+
+  // Handle button presses
+  if (UpButtonState == HIGH) {
+    counter++;  // Increment counter
+    lastInputTime = millis();  // Reset the timer
+    Mode = 2;  // Switch to Mode 2
+    delay(200);  // Debounce delay
+    lcd.clear();
+    Serial.println("up");
+  }
+  if (DownButtonState == HIGH) {
+    counter--;  // Decrement counter
+    lastInputTime = millis();  // Reset the timer
+    Mode = 2;  // Switch to Mode 2
+    delay(200);  // Debounce delay
+    lcd.clear();
+    Serial.println("down");
+  }
+  if (SelectButtonState == HIGH) {
+    lastInputTime = millis();  // Reset the timer
+    Mode = 3;  // Switch to Mode 2
+    delay(200);  // Debounce delay
+    Serial.println("select");
+  }
+
+
+  // Check if 20 seconds have passed since the last input
+  if (millis() - lastInputTime >= inputTimeout) {
+    Mode = 1;  // Switch to Mode 1
+    lastInputTime = millis();  // Reset the timer
+  }
+
+
+  // Handle modes
+  switch (Mode) {
+    case 1:
+      // Non-blocking scrolling logic
+      if (millis() - previousScrollTime >= tim) {
+        previousScrollTime = millis();  // Update the scroll timer
+
+
+        if (displayArray1) {
+          // Scroll array1
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(array1 + scrollPosition1);  // Print substring of array1
+          scrollPosition1++;
+          if (scrollPosition1 > strlen(array1)) {
+            scrollPosition1 = 0;
+            displayArray1 = false;  // Switch to array2
+          }
+        } else {
+          // Scroll array2
+          lcd.clear();
+          lcd.setCursor(0, 1);
+          lcd.print(array2 + scrollPosition2);  // Print substring of array2
+          scrollPosition2++;
+          if (scrollPosition2 > strlen(array2)) {
+            scrollPosition2 = 0;
+            displayArray1 = true;  // Switch back to array1
+          }
+        }
+      }
+      break;
+
+
+    case 2:
+      // Display the counter value at the bottom-left corner
+
+
+      lcd.setCursor(0, 0);
+      lcd.print("Temp Select     ");
+        // Clear the previous number by printing spaces
+      lcd.setCursor(0, 1);  // Reset the cursor to the bottom-left corner
+      lcd.print(counter);  // Print the current counter value
+      break;
+    case 3:
+      lcd.clear();
+      lastInputTime = millis();
+      lcd.setCursor(0,0);
+      lcd.print("Selected Temp   ");
+      lcd.setCursor(0, 1);  // Reset the cursor to the bottom-left corner
+      lcd.print("       "+String(counter)+"       ");
+      delay(4000);
+      lcd.clear();
+      if (counter >= 70){
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("!NOT  A  HEATER!");
+        delay(3000);
+        counter = 70;
+        Mode = 1;
+        break;
+      }
+      lcd.setCursor(0,0);
+      lcd.print("Lowering...    ");
+      Wire.beginTransmission(9); // transmit to device #9
+      Wire.write(1);              // sends x
+      Wire.endTransmission();    // stop  transmitting
+      Serial.println("sent down");
+      digitalWrite(trig, LOW);  
+      delayMicroseconds(2);  
+      digitalWrite(trig, HIGH);  
+      delayMicroseconds(10);  
+      digitalWrite(trig, LOW);  
+      duration = pulseIn(A1, HIGH);
+      distance = (duration*.0343)/2;
+      Serial.println(distance);
+      for (i = 0; i < lower; i++){
+        tone(Buzzer, 1000,500);
+        delay(1000);
+      }
+
+
+      Wire.beginTransmission(9); // transmit to device #9
+      Wire.write(0);              // sends x
+      Wire.endTransmission();    // stop  transmitting
+      lcd.clear();
+      if (distance>10){
+        lcd.setCursor(0, 0);
+        lcd.print("8.4 OZ detected ");
+      }
+      if (distance<10){
+        lcd.setCursor(0, 0);
+        lcd.print(" 16 OZ detected ");
+      }
+      delay(3000);
+      digitalWrite(3, HIGH);
+      Serial.println("on");
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("Cooling...     ");
+      diff = ((70.0 - 38)*1000.0)/64.0;
+      beat = (int)diff;
+ 
+      int can_temp = 70;
+     
+      while (can_temp > counter){
+        Vo = analogRead(ThermistorPin);
+        R2 = R1 * (1023.0 / (float)Vo - 1.0);
+        logR2 = log(R2);
+        T = (1.0 / (c1 + c2*logR2 + c3*logR2*logR2*logR2));
+        Tf = (Tc * 9.0)/ 5.0 + 32.0;
+        diff1 = Tf - can_temp;
+        float y = 6.0; // Set your target y-value here
+        float a = -0.00003;
+        float b = 0.0429;
+        float c = 5.1309 - y;
+
+
+        float discriminant = b * b - 4 * a * c;
+
+
+        if (discriminant < 0) {
+          Serial.println("No real solution.");
+        } else {
+          float sqrtD = sqrt(discriminant);
+          float x1 = (-b + sqrtD) / (2 * a);
+          float x2 = (-b - sqrtD) / (2 * a);
+
+
+          float result;
+
+
+          // Choose based on sign
+          if (x1 >= 0 && x2 >= 0) {
+            result = min(x1, x2);  // both positive → take smaller
+          } else {
+            result = max(x1, x2);  // one or both negative → take larger
+          }
+        float d = .0001;
+        float e = .0657;
+        float change = result * d + e;
+        bear = (int)change;
+        can_temp = can_temp - bear;
+        lcd.setCursor(0,0);
+        lcd.print("Cooling...     ");
+        for (i = 0; i < 8; i++) {
+          delay(125);
+          lcd.setCursor(i, 1);
+          lcd.print("*");        
+        }
+        lcd.clear();
+        Vo = analogRead(ThermistorPin);
+        R2 = R1 * (1023.0 / (float)Vo - 1.0);
+        logR2 = log(R2);
+        T = (1.0 / (c1 + c2*logR2 + c3*logR2*logR2*logR2));
+        Tf = (Tc * 9.0)/ 5.0 + 32.0;
+        diff1 = Tf - can_temp;
+        float y = 6.0; // Set your target y-value here
+        float a = -0.00003;
+        float b = 0.0429;
+        float c = 5.1309 - y;
+
+
+        float discriminant = b * b - 4 * a * c;
+
+
+        if (discriminant < 0) {
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print("sorry too cold:(");
+          delay(3000);
+          counter = 70;
+          Mode = 1;
+          break;
+        } else {
+          float sqrtD = sqrt(discriminant);
+          float x1 = (-b + sqrtD) / (2 * a);
+          float x2 = (-b - sqrtD) / (2 * a);
+
+
+          float result;
+
+
+          // Choose based on sign
+          if (x1 >= 0 && x2 >= 0) {
+            result = min(x1, x2);  // both positive → take smaller
+          } else {
+            result = max(x1, x2);  // one or both negative → take larger
+          }
+        float d = .0001;
+        float e = .0657;
+        float change = result * d + e;
+        bear = (int)change;
+        can_temp = can_temp - bear;
+        lcd.setCursor(0,0);
+        lcd.print("Cooling...     ");
+        for (i = 8; i < 16; i++) {
+          delay(125);
+          lcd.setCursor(i, 1);
+          lcd.print("*");        
+        }
+        lcd.clear();
+      }
+      Wire.beginTransmission(9); // transmit to device #9
+      Wire.write(2);              // sends x
+      Wire.endTransmission();    // stop  transmitting
+      digitalWrite(3,LOW);
+      Serial.println("off");
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      lcd.setCursor(0,0);
+      lcd.print("      DONE      ");
+      lcd.setCursor(0,1);
+      lcd.print("    COOLING!    ");
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      tone(Buzzer, 294, beat/4);
+      delay(beat/4);
+      tone(Buzzer, 294, beat/4);
+      delay(beat/4);
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      tone(Buzzer, 220, beat/2);
+      delay(beat/2);
+      delay(beat/2);
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      tone(Buzzer, 294, beat/4);
+      delay(beat/4);
+      tone(Buzzer, 294, beat/4);
+      delay(beat/4);
+      tone(Buzzer, 294, beat/2);
+      delay(beat/2);
+      tone(Buzzer, 220, beat/2);
+      delay(beat);  
+    // stop  transmitting
+      for (i = 0; i < 2; i++) {
+        tone(Buzzer, 294, (5*beat)/2);
+        delay((5*beat)/2);
+        tone(Buzzer, 294, beat/2);
+        delay(beat/2);
+        tone(Buzzer, 349, beat/2);
+        delay(beat/2);
+        tone(Buzzer, 294, beat/2);
+        delay(beat/2);
+        tone(Buzzer, 392, (5*beat)/2);
+        delay((5*beat)/2);
+        tone(Buzzer, 349, beat/4);
+        delay(beat/4);
+        tone(Buzzer, 294, beat/4);
+        delay(beat/4);
+        tone(Buzzer, 392, (beat)/2);
+        delay((beat)/2);
+        tone(Buzzer, 349, beat/2);
+        delay(beat/2);
+        tone(Buzzer, 294, (5*beat)/2);
+        delay((5*beat)/2);
+        tone(Buzzer, 233, (beat)/2);
+        delay((beat)/2);
+        tone(Buzzer, 131, (beat)/2);
+        delay((beat)/2);
+        tone(Buzzer, 233, (beat)/2);
+        delay((beat)/2);
+        tone(Buzzer, 98, (5*beat)/2);
+        delay((5*beat)/2);
+        tone(Buzzer, 349, beat/4);
+        delay(beat/4);
+        tone(Buzzer, 294, beat/4);
+        delay(beat/4);
+        tone(Buzzer, 392, (beat)/2);
+        delay((beat)/2);
+        tone(Buzzer, 349, beat/2);
+        delay(beat/2);
+      }
+
+
+      delay(20000);
+      Wire.beginTransmission(9); // transmit to device #9
+      Wire.write(0);              // sends x
+      Wire.endTransmission();
+      counter = 70;
+      Mode = 1;
+      break;
+
+
+
+
+  }
+}
+
+
+
+
